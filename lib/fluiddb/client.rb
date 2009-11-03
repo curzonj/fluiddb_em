@@ -77,8 +77,6 @@ module FluidDB
           http.request(req)
         end
       }
-      puts res.class
-      puts res.to_hash.inspect
       JSON.parse(res.body) if res.body && res.body != ''
     end
     
