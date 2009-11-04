@@ -1,53 +1,66 @@
 module FluidDB
   class HttpClient < EM::Protocols::HttpClient2
-    class << self
-      # conn = FluidDB::HttpClient.connect('http://sandbox.fluidinfo.com/', 'test', 'test')
-      def connect(url, username, password)
-        uri = URI.parse(url)
+    include Loggable
 
-        conn = super(:host => uri.host, :port => uri.port, :ssl => (uri.scheme == 'https' ? true : false))
-        conn.credentials username, password
-        conn
-      end
-
-      def with_params(uri, values)
-        values = values.inject([]){|arr,arg| arr << arg.join("=")}.join("&") if values.is_a?(Hash)
-        uri += "?#{values}" unless values.nil? || values.empty?
-        URI.encode(uri)
-      end
-    end
-
-    def credentials(username, password)
-      @authorization = "Basic #{Base64.encode64("#{username}:#{password}")}"
-    end
-
-    DEFAULT_HEADERS = {'Content-Type' => 'application/json', 'Accept' => 'application/json'}
+    DEFAULT_HEADERS = {'Content-Type' => 'application/json', 'Accept' => '*/*'}
     METHODS = { :get => "GET", :put => "PUT", :post => "POST", :delete => "DELETE" }
+
+    # conn = FluidDB::HttpClient.connect('http://sandbox.fluidinfo.com/', 'test', 'test')
+    def self.connect(url, username, password)
+      uri = URI.parse(url)
+
+      conn = super(:host => uri.host, :port => uri.port, :ssl => (uri.scheme == 'https' ? true : false))
+      conn.credentials username, password
+      conn
+    end
 
     # req = conn.request(:post, '/objects') {|status, json| p(json) }
     def request(method, uri, params=nil, payload=nil, headers={}, &block)
-      args = { :uri => self.class.with_params(uri, params),
-               :verb => METHODS[method],
+      uri = self.class.with_params(uri, params) if params.is_a?(Hash)
+      verb = METHODS[method]
+      args = { :uri => uri,
+               :verb => verb,
                :headers => DEFAULT_HEADERS.merge(headers) }
       args[:body] = payload.to_json if payload
 
       req = super(args)
+      req.callback do |response|
+        if response.status != 200
+          log.warn "(#{response.status}) #{uri} -- #{response.headers.inspect}"
+        else
+          log.debug "(#{response.status}) #{uri}"
+        end
+      end
+      req.errback{ log.error "Failed #{verb} #{uri}" }
+
       if block_given?
         req.callback {|response| self.class.handle_json_response(response, &block) }
       end
       req
     end
 
-    def self.handle_json_response(response)
-      body = if response.headers['content-type'] == ["application/json"]
-        JSON.parse(response.content)
-      elsif response.headers['content-type'] == ["application/vnd.fluiddb.value+json"]
-        JSON.parse('[' + response.content + ']').first
-      else
-        response.content
+    def credentials(username, password)
+      @authorization = "Basic #{Base64.encode64("#{username}:#{password}")}"
+    end
+
+    class << self
+      def with_params(uri, values)
+        values = values.inject([]){|arr,arg| arr << arg.join("=")}.join("&")
+        uri += "?#{values}" unless values.empty?
+        URI.encode(uri)
       end
 
-      yield(response.status, body, response.headers)
+      def handle_json_response(response)
+        body = if response.headers['content-type'] == ["application/json"]
+          JSON.parse(response.content)
+        elsif response.headers['content-type'] == ["application/vnd.fluiddb.value+json"]
+          JSON.parse('[' + response.content + ']').first
+        else
+          response.content
+        end
+
+        yield(response.status, body, response.headers)
+      end
     end
   end
 end
