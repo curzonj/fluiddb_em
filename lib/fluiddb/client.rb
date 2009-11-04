@@ -1,3 +1,5 @@
+# http://github.com/ecarnevale/rb-fluidDB
+
 require 'json'
 require 'net/http'
 require 'uri'
@@ -8,13 +10,15 @@ module FluidDB
   end
 end
 
-FluidDB.base_url = 'fluiddb.fluidinfo.com/'
+#FluidDB.base_url = 'fluiddb.fluidinfo.com/'
+FluidDB.base_url = 'sandbox.fluidinfo.com/'
 
 module FluidDB
 	
   class Client
+    attr_reader :uri, :user, :password
 
-  	DEFAULT_HEADERS = {'Content-type' => 'application/json', 'Accept' => 'application/json'}
+    DEFAULT_HEADERS = {'Content-type' => 'application/json', 'Accept' => 'application/json'}
     
     def initialize(options={})
       suburl = options[:suburl] ||= ""
@@ -77,9 +81,14 @@ module FluidDB
           http.request(req)
         end
       }
+      puts res.class
+      puts res.body.inspect
+
       JSON.parse(res.body) if res.body && res.body != ''
     end
     
   end
   
 end
+
+DB = FluidDB::Client.new({:user => "test", :password => "test"})
