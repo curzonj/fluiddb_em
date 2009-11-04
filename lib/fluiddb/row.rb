@@ -6,8 +6,26 @@ module FluidDB
   class Row
     class << self
 
-      def ensure_tag(tag)
-        parts = tag.split('/')
+      def ensure_tag(tag, description='FluidRow Tag')
+        spaces = tag.split('/')
+        tag_name = spaces.pop
+        space = spaces.join('/')
+        ensure_namespace space
+
+        if DB["tags/#{tag}"].get.nil?
+          DB["tags/#{space}"].post({ :name => tag_name, :description => description, :indexed => true })
+        end
+      end
+
+      def ensure_namespace(space, description='FluidRow Namespace')
+        spaces = space.split('/')
+        spaces.inject('') do |prefix, name|
+          if DB["namespaces#{prefix}/#{name}"].get.nil?
+            DB["namespaces#{prefix}"].post({ :name => name, :description => description })
+          end
+
+          prefix + '/' + name
+        end
       end
 
       # FluidDB::Row.find('has fluiddb/tags/path', 'fluiddb/tags/*', :limit => 3)
@@ -147,7 +165,7 @@ module FluidDB
 
       def request(path, opts={})
         opts[:headers] ||= {}
-        opts[:headers]["Authorization"] = "Basic #{Base64.b64encode("#{DB.user}:#{DB.password}")}"
+        opts[:headers]["Authorization"] = "Basic #{Base64.encode64("#{DB.user}:#{DB.password}")}"
         opts[:timeout] ||= 10000
         opts[:cache_timeout] ||= 2
 
