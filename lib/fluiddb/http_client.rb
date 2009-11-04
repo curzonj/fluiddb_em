@@ -16,22 +16,26 @@ module FluidDB
 
     # req = conn.request(:post, '/objects') {|status, json| p(json) }
     def request(method, uri, params=nil, payload=nil, headers={}, &block)
-      uri = self.class.with_params(uri, params) if params.is_a?(Hash)
+      raise "Request made on a closed connection" if closed?
+
+      uri = self.class.with_params(uri, params) if params.is_a?(Hash) && !params.empty?
       verb = METHODS[method]
       args = { :uri => uri,
                :verb => verb,
                :headers => DEFAULT_HEADERS.merge(headers) }
-      args[:body] = payload.to_json if payload
+      args[:body] = payload.is_a?(Hash) ? payload.to_json : payload
+      desc = "#{verb} #{uri}"
 
+      log.debug("Starting #{desc}")
       req = super(args)
       req.callback do |response|
         if response.status != 200
-          log.warn "(#{response.status}) #{uri} -- #{response.headers.inspect}"
+          log.warn "(#{response.status}) #{desc} -- #{response.headers.inspect}"
         else
-          log.debug "(#{response.status}) #{uri}"
+          log.debug "(#{response.status}) #{desc}"
         end
       end
-      req.errback{ log.error "Failed #{verb} #{uri}" }
+      req.errback{ log.error "Failed #{desc}" }
 
       if block_given?
         req.callback {|response| self.class.handle_json_response(response, &block) }
@@ -39,8 +43,36 @@ module FluidDB
       req
     end
 
+    def closed?
+      @closed == true
+    end
+
     def credentials(username, password)
       @authorization = "Basic #{Base64.encode64("#{username}:#{password}")}"
+    end
+
+    def join(list=nil)
+      completed = false
+      listening = []
+      list ||= @requests || []
+
+      handler = lambda do
+        log.debug "#{list.size} requests remaining"
+        if list.empty?
+          yield unless completed
+          completed = true
+        else
+          list.each do |req|
+            next if listening.include?(req.object_id)
+            listening << req.object_id
+
+            req.callback(&handler)
+            req.errback(&handler)
+          end
+        end
+      end
+
+      handler.call
     end
 
     class << self

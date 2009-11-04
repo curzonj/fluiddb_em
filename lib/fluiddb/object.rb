@@ -13,7 +13,7 @@ module FluidDB
             list = json['ids'].slice(page*limit, limit)
             list = list.map {|id| new(id, tags) }
 
-            join { yield list }
+            connection.join { yield list }
           else
             yield nil
           end
@@ -68,7 +68,7 @@ module FluidDB
     # TODO if you change to EM you can stream data to fluiddb
     #
     # FluidDB::Row.store(id, 'test/curzonj/name', { :bob => :fred }.to_yaml)
-    def store(id, tag, value, content_type='application/octet-stream')
+    def store(id, tag, value)
       data = value.to_s
 
       headers = {}
@@ -81,11 +81,21 @@ module FluidDB
               :body => data
     end
 
+    def store(tag, value, content_type='application/octet-stream', &block)
+      request( :put, base_path + tag, nil,
+               value.to_s, 'Content-Type' => content_type, &block)
+    end
+
+    def base_path
+      "/objects/#{id}/"
+    end
+      
+
     def fetch_fields(fields)
       fields.flatten!
 
-      resolved_fields(fields) do |field|
-        fetch_object_field(field)
+      resolved_fields(fields) do |tag|
+        fetch_object_tag(tag)
       end
     end
 
@@ -116,7 +126,7 @@ module FluidDB
     end
 
     def per_object_tags
-      get "/objects/#{id}" do |status, json|
+      get base_path do |status, json|
         if status == 200
           json['tagPaths'].each do |tag|
             yield tag
@@ -125,9 +135,9 @@ module FluidDB
       end
     end
 
-    def fetch_object_field(field)
-      get "/objects/#{id}/#{field}" do |status, body|
-        attributes[field] = body if status == 200
+    def fetch_object_tag(tag)
+      get(base_path + tag) do |status, body|
+        attributes[tag] = body if status == 200
       end
     end
 

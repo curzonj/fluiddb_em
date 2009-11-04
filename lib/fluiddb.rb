@@ -6,6 +6,7 @@ require 'json'
 require 'loggable'
 
 require 'fluiddb/http_client'
+require 'fluiddb/request_tracking'
 require 'fluiddb/memcache'
 require 'fluiddb/requestor'
 require 'fluiddb/base'

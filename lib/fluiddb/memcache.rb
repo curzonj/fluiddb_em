@@ -1,16 +1,29 @@
 module FluidDB
   module Memcache
-    CACHE_TTL = 300
+    class << self
+      attr_writer :cache_ttl
+      def cache_ttl
+        @cache_ttl || 300
+      end
+
+      def included(base)
+        base.class_eval do
+          alias get_without_memcache get
+          alias get get_with_memcache
+        end
+      end
+    end
 
     # Caches requests in memcache
-    def get(uri, params={}, &block)
-      uri = HttpClient.with_params(uri, params)
+    def get_with_memcache(uri, params={}, &block)
+      return get_without_memcache(uri, params, &block) unless defined? CACHE
 
+      uri = HttpClient.with_params(uri, params)
       if (value = CACHE.get(uri))
         return if block.nil?
 
         if value == 'currently_running'
-          if (req = current_requests[uri])
+          if (respond_to?(:current_requests) && req = current_requests[uri])
             req.callback do |response|
               HttpClient.handle_json_response(response, &block)
             end
@@ -30,9 +43,9 @@ module FluidDB
     private
     def cache_miss(uri)
       CACHE.add(uri, 'currently_running', 10)
-      req = request(uri) do |status, json|
+      req = get_without_memcache(uri) do |status, json|
         if status == 200
-          CACHE.set(uri, [status, json], CACHE_TTL)
+          CACHE.set(uri, [status, json], Memcache.cache_ttl)
         else
           CACHE.delete(uri)
         end
@@ -45,40 +58,6 @@ module FluidDB
       req.errback do
         CACHE.delete(uri)
       end
-    end
-
-    def current_requests
-      @@current_requests ||= {}
-    end
-
-    def join
-      handler = lambda do
-        log.debug "#{current_requests.size} requests remaining"
-        yield if current_requests.empty?
-      end
-
-      if current_requests.empty?
-        yield
-      else
-        current_requests.values.each do |req|
-          req.callback(&handler)
-          req.errback(&handler)
-        end
-      end
-    end
-
-    def request(uri, &block)
-      log.debug("Requesting #{uri}")
-      req = FluidDB.http.request(:get, uri)
-      current_requests[uri] = req
-
-      req.errback { current_requests.delete(uri) }
-      req.callback do |response|
-        current_requests.delete(uri)
-        HttpClient.handle_json_response(response, &block)
-      end
-
-      req
     end
   end
 end

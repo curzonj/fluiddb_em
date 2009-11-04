@@ -1,7 +1,4 @@
-This is a EventMachine-based client for FluidDB.
-
-It currently requires memcache for the higher level interface,
-but the http/json API works without it.
+This is a EventMachine-based client for FluidDB. It has both a low level REST API and a higher level ORM-like API. It'll use memcache, if CACHE is defined, with the uri's as keys.
 
 - Docs: http://rdoc.info/projects/curzonj/fluiddb_em
 - Project: http://github.com/curzonj/fluiddb_em
