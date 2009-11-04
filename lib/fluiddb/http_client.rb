@@ -1,7 +1,3 @@
-require 'eventmachine'
-require 'base64'
-require 'json'
-
 module FluidDB
   class HttpClient < EM::Protocols::HttpClient2
     class << self
@@ -12,6 +8,12 @@ module FluidDB
         conn = super(:host => uri.host, :port => uri.port, :ssl => (uri.scheme == 'https' ? true : false))
         conn.credentials username, password
         conn
+      end
+
+      def with_params(uri, values)
+        values = values.inject([]){|arr,arg| arr << arg.join("=")}.join("&") if values.is_a?(Hash)
+        uri += "?#{values}" unless values.nil? || values.empty?
+        URI.encode(uri)
       end
     end
 
@@ -24,30 +26,19 @@ module FluidDB
 
     # req = conn.request(:post, '/objects') {|status, json| p(json) }
     def request(method, uri, params=nil, payload=nil, headers={}, &block)
-      if params
-        params = params.inject([]){|arr,arg| arr << arg.join("=")}.join("&")
-        uri = URI.encode(uri + "?#{params}")
-      end
-
-      args = { :uri => uri,
+      args = { :uri => self.class.with_params(uri, params),
                :verb => METHODS[method],
                :headers => DEFAULT_HEADERS.merge(headers) }
       args[:body] = payload.to_json if payload
 
       req = super(args)
       if block_given?
-        req.callback {|response| handle_json_response(response, &block) }
-        req.errback  {|response| handle_error(response) }
+        req.callback {|response| self.class.handle_json_response(response, &block) }
       end
       req
     end
 
-    def handle_error(response)
-      # TODO add error handling too?
-      puts "WARN (#{response.status}): #{response.uri} -- #{response.body}"
-    end
-
-    def handle_json_response(response)
+    def self.handle_json_response(response)
       body = if response.headers['content-type'] == ["application/json"]
         JSON.parse(response.content)
       elsif response.headers['content-type'] == ["application/vnd.fluiddb.value+json"]
@@ -63,6 +54,10 @@ end
 
 class EM::Protocols::HttpClient2::Request
   BLOCK_SIZE = 8192
+
+  def get?
+    @args[:verb] == "GET"
+  end
 
   def send_request
     r = [
