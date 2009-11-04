@@ -3,5 +3,5 @@ This is a EventMachine-based client for FluidDB.
 It currently requires memcache for the higher level interface,
 but the http/json API works without it.
 
-Docs: http://rdoc.info/projects/curzonj/fluiddb_em
-Project: http://github.com/curzonj/fluiddb_em
+- Docs: http://rdoc.info/projects/curzonj/fluiddb_em
+- Project: http://github.com/curzonj/fluiddb_em
